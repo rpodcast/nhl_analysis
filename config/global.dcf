@@ -1,0 +1,8 @@
+data_loading: off
+cache_loading: on
+munging: off
+logging: off
+load_libraries: on
+libraries: reshape2, plyr, ggplot2, stringr, lubridate, car
+as_factors: off
+data_tables: off
