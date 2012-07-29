@@ -5,6 +5,9 @@
 # backup copy before munging
 reg.backup <- reg.game
 
+# if necessary use backup to debug code below
+#reg.game <- reg.backup
+
 # delete row with home.team = "Eastern Conf" since I don't care about allstar game 
 # X[ ! X$Variable1 %in% c(11,12), ]
 reg.game <- reg.game[ ! reg.game$home.team=="Eastern Conf",]
@@ -34,6 +37,8 @@ reg.game$era.ind <- ifelse(reg.game$year > 2003,
 reg.game$attendance <- as.numeric(gsub(",", "", reg.game$attendance))
 
 # compute total goals scored
+reg.game$home.goals <- as.numeric(reg.game$home.goals)
+reg.game$away.goals <- as.numeric(reg.game$away.goals)
 reg.game$total.goals <- reg.game$home.goals + reg.game$away.goals
 
 # derive whether home team or away team won the game
@@ -42,33 +47,19 @@ reg.game$winner <- ifelse(reg.game$home.goals > reg.game$away.goals,
                           "away")
 
 
-# use car package to recode messy team names
-reg.game$home.team <- recode(reg.game$home.team,
-                             "'Anaheim Mighty Ducks'='Anaheim Ducks';
-                            'Atlanta Thrasher'='Atlanta Thrashers';
-                             'Calgary Flames<' = 'Calgary Flames';
-                             c('Canadiens De Montreal', 'Canadiens Montr?Al', 'Canadiens Montreal', 'Canadiens Montr\\xb3Al') = 'Montreal Canadiens';
-                             'Colorado Avalanch' = 'Colorado Avalanche';
-                             'Edmonton Oiler' = 'Edmonton Oilers';
-                             c('Los Angeles King', 'Los Angeles Kings<') = 'Los Angeles Kings';
-                             'San Jose Shark' = 'San Jose Sharks';
-                             c('St. Louis Blues', 'St.Louis Blues') = 'St Louis Blues'",
-                            as.factor.result=TRUE)
+# use custom recodeteam function to recode messy team names
+new.home.team.names <- recodeteam(reg.game$home.team)
+new.away.team.names <- recodeteam(reg.game$away.team)
 
-reg.game$away.team <- recode(reg.game$away.team,
-                             "'Anaheim Mighty Ducks'='Anaheim Ducks';
-                            'Atlanta Thrasher'='Atlanta Thrashers';
-                             'Calgary Flames<' = 'Calgary Flames';
-                             c('Canadiens De Montreal', 'Canadiens Montr?Al', 'Canadiens Montreal') = 'Montreal Canadiens';
-                             'Colorado Avalanch' = 'Colorado Avalanche';
-                             'Edmonton Oiler' = 'Edmonton Oilers';
-                             c('Los Angeles King', 'Los Angeles Kings<') = 'Los Angeles Kings';
-                             'San Jose Shark' = 'San Jose Sharks';
-                             c('St. Louis Blues', 'St.Louis Blues') = 'St Louis Blues'",
-                            as.factor.result=TRUE)
+reg.game$home.team.long <- new.home.team.names$team.long
+reg.game$home.team.short <- new.home.team.names$team.short
+
+reg.game$away.team.long <- new.away.team.names$team.long
+reg.game$away.team.short <- new.away.team.names$team.short
 
 
-reg.game$home.conference <- recode(reg.game$home.team,
+
+reg.game$home.conference <- recode(reg.game$home.team.long,
                                    "c('Anaheim Ducks', 'Calgary Flames', 'Chicago Blackhawks', 'Colorado Avalanche', 
                                      'Columbus Blue Jackets', 'Dallas Stars', 'Detroit Red Wings', 'Edmonton Oilers',
                                    'Los Angeles Kings', 'Minnesota Wild', 'Nashville Predators', 'Phoenix Coyotes',
@@ -79,7 +70,7 @@ reg.game$home.conference <- recode(reg.game$home.team,
                                    'Toronto Maple Leafs', 'Washington Capitals') = 'East'",
                                   as.factor.result=TRUE)
 
-reg.game$away.conference <- recode(reg.game$away.team,
+reg.game$away.conference <- recode(reg.game$away.team.long,
                                    "c('Anaheim Ducks', 'Calgary Flames', 'Chicago Blackhawks', 'Colorado Avalanche', 
                                      'Columbus Blue Jackets', 'Dallas Stars', 'Detroit Red Wings', 'Edmonton Oilers',
                                    'Los Angeles Kings', 'Minnesota Wild', 'Nashville Predators', 'Phoenix Coyotes',
@@ -96,10 +87,8 @@ reg.game$matchup.conference <- ifelse(reg.game$away.conference == "West" & reg.g
                                              "East",
                                              "Other"))
 
-#########################################################
-####### recode long team names to short name ############
-#########################################################
-
+# remove variables that aren't needed anymore
+reg.game$home.team <- reg.game$away.team <- reg.game$game.id2 <- NULL
 
 # save into a workspace using cache
 cache("reg.game")
