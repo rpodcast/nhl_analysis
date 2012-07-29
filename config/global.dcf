@@ -1,5 +1,5 @@
 data_loading: off
-cache_loading: on
+cache_loading: off
 munging: off
 logging: off
 load_libraries: on
