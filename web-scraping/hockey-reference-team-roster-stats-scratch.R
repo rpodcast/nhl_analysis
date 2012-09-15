@@ -23,6 +23,7 @@
 
 library(XML)
 library(stringr)
+library(RCurl)
 
 base.url <- "http://www.hockey-reference.com/teams/"
 year <- 2012
@@ -31,7 +32,11 @@ team <- "LAK"
 full.url <- paste(base.url, team, "/", year, ".html", sep="")
 bad.url <- paste(base.url, "WWW", "/", year, ".html", sep="")
 
-table.stats <- readHTMLTable(full.url, header=TRUE)
+tmpdata <- getURL(full.url)
+baddata <- getURL(bad.url)
+
+
+table.stats <- readHTMLTable(full.url, header=FALSE)
 
 names(table.stats)
 

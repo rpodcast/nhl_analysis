@@ -23,7 +23,7 @@ library(XML)
 library(stringr)
 
 base.url <- "http://www.hockey-reference.com/teams/"
-team <- "DET"
+team <- "CLE"
 
 full.url <- paste(base.url, team, "/", "skaters.html", sep="")
 
@@ -38,3 +38,31 @@ skater.table <- table.stats[["skaters"]]
 skater.table <- skater.table[!skater.table$Rk=="Rk",]
 
 
+# other urls
+
+full.coach.url <- paste(base.url, team, "/", "coaches.html", sep="")
+full.draft.url <- paste(base.url, team, "/", "draft.html", sep="")
+full.captain.url <- paste(base.url, team, "/", "captains.html", sep="")
+full.h2h.url <- paste(base.url, team, "/", "head2head.html", sep="")
+
+table.stats <- readHTMLTable(full.coach.url, header=FALSE)
+
+names(table.stats)
+
+table.stats$coaches
+
+# remove rows with V1=blank and V2 in (Regular Season, Coach)
+
+table.stats <- readHTMLTable(full.draft.url, header=FALSE)
+
+tmp <- table.stats$stats
+
+
+table.stats <- readHTMLTable(full.captain.url, header=FALSE)
+table.stats$captains
+
+table.stats <- readHTMLTable(full.h2h.url, header=TRUE)
+
+names(table.stats)
+
+table.stats$head2head
