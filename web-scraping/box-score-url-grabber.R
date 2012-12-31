@@ -29,7 +29,8 @@
 #----------------------------------------------------------------------------------------------
 
 # load required packages
-library(XML)
+#library(XML)
+library(XML, lib.loc="~/R-dev/")
 library(stringr)
 library(RMySQL)
 
@@ -65,7 +66,10 @@ colClasses <- function(d, colClasses) {
 load(file="~/hockey_workspaces/boxscore.url.check.data.RData")
 
 boxscore.valid <- boxscore.tracker[boxscore.tracker$boxscore.stats,]
-boxscore.valid <- boxscore.valid[order(boxscore.valid$team, boxscore.valid$year),]
+boxscore.valid <- boxscore.valid[order(boxscore.valid$team, boxscore.valid$year, boxscore.valid$month, boxscore.valid$day),]
+
+# system runs out of memory after a few teams are imported, so need to subset further
+boxscore.valid <- boxscore.valid[!boxscore.valid$team %in% c("ANA", "ATL", "BOS", "BUF", "CAR", "CGY", "CHI", "COL", "DAL"),]
 
 rm(boxscore.tracker)
 
@@ -116,9 +120,10 @@ goalie.table.column.classes <- c("integer",
                                  rep("numeric", 11),
                                  rep("character", 2))
 
+# nrow(boxscore.valid)
+
 for(i in 1:nrow(boxscore.valid)) {
 
-#for(i in c(1, 804, 2476, 15876)) {
   team <- as.character(boxscore.valid[i, "team"])
   year <- boxscore.valid[i, "year"]
   month <- boxscore.valid[i, "month"]
@@ -136,9 +141,11 @@ for(i in 1:nrow(boxscore.valid)) {
   full.url <- paste(base.url, year, month.url, day.url, "0", team,".html", sep="")
   
   out.string <- paste(Sys.time(), "--", team, year, month, day, sep = " ")
-  print(out.string)
+  #print(out.string)
   cat(out.string, "\n", file="~/hockey_workspaces/box.score.grabber.log.txt", append=TRUE)
   table.stats <- try(readHTMLTable(full.url, header=FALSE), silent = TRUE)
+  
+  rm(out.string, full.url, day.url, month.url)
   
   if (!inherits(table.stats, "try-error")) {
     
@@ -197,11 +204,14 @@ for(i in 1:nrow(boxscore.valid)) {
     
     rm(home.player.table, away.player.table)
     
-    if(dbExistsTable(mychannel, "SKATER_BOXSCORE")) {
-      dbWriteTable(mychannel, "SKATER_BOXSCORE", player.table, append = T, row.names=FALSE)
-    } else dbWriteTable(mychannel, "SKATER_BOXSCORE", player.table, row.names=FALSE) 
+    #skater.dbtable <- str_c(team, "_SKATER_BOXSCORE")
+    skater.dbtable <- "SKATER_BOXSCORE"
     
-    rm(player.table)
+    if(dbExistsTable(mychannel, skater.dbtable)) {
+      dbWriteTable(mychannel, skater.dbtable, player.table, append = T, row.names=FALSE)
+    } else dbWriteTable(mychannel, skater.dbtable, player.table, row.names=FALSE) 
+    
+    rm(player.table, skater.dbtable)
     
     #all.player.table <- rbind(all.player.table, player.table)
     
@@ -215,11 +225,22 @@ for(i in 1:nrow(boxscore.valid)) {
     
     rm(home.goalie.table, away.goalie.table)
     
-    if(dbExistsTable(mychannel, "GOALIE_BOXSCORE")) {
-      dbWriteTable(mychannel, "GOALIE_BOXSCORE", goalie.table, append = T, row.names=FALSE)
-    } else dbWriteTable(mychannel, "GOALIE_BOXSCORE", goalie.table, row.names=FALSE) 
     
-    rm(goalie.table)
+    #goalie.dbtable <- str_c(team, "_GOALIE_BOXSCORE")
+    goalie.dbtable <- "GOALIE_BOXSCORE"
+    
+    if(dbExistsTable(mychannel, goalie.dbtable)) {
+      dbWriteTable(mychannel, goalie.dbtable, goalie.table, append = T, row.names=FALSE)
+    } else dbWriteTable(mychannel, goalie.dbtable, goalie.table, row.names=FALSE) 
+    
+    rm(goalie.table, goalie.dbtable)
+    
+    # remove other objects
+    rm(player.home.team.ind, player.table.ind, goalie.home.team.ind, goalie.table.ind, 
+       home.team.goalie.table.name, home.team.player.table.name, away.team.clean, home.team.clean,
+       away.team.goalie.table.name, away.team.player.table.name, team, year, month, day, i,
+       team.goalie.table.names, team.player.table.names)
+    gc()
     
   } else {
     next
