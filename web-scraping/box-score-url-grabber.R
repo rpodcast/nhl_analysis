@@ -29,104 +29,149 @@
 #----------------------------------------------------------------------------------------------
 
 # load required packages
-#library(XML)
-library(XML, lib.loc="~/R-dev/")
+library(XML, lib.loc="/usr/local/lib/R/site-library")
 library(stringr)
 library(RMySQL)
 
-# source script to estabilish database credentials
-source("~/Dropbox/rpodcast_code/nhl_analysis/lib/mysql.login.R")
+# define debug flag
+debug.set <- FALSE
+
+# define database table names for MySQL
+skater.dbtable <- "SKATER_BOXSCORE"
+goalie.dbtable <- "GOALIE_BOXSCORE"
 
 # connect to hockey database
-mychannel <- dbConnect(MySQL(), user=login$user, password=login$password, dbname=login$dbname)
+# assumes username and password are specified in ~/.my.cnf
+mychannel <- dbConnect(MySQL(), dbname = "hockey", group="client")
 
-# rs <- dbSendQuery(mychannel, "select * from SKATER_REGISTER")
-# 
-# 
-# tmp <- fetch(rs, n=10)
-# 
-# str(tmp)
+# define indicator for whether to overwrite existing log with new log
+log.name <- "box.score.grabber.log.txt"
+overwrite.existing <- TRUE
 
-# Coerces data.frame columns to the specified classes
-colClasses <- function(d, colClasses) {
-  colClasses <- rep(colClasses, len=length(d))
-  d[] <- lapply(seq_along(d), function(i) switch(colClasses[i], 
-                                                 numeric=as.numeric(d[[i]]), 
-                                                 character=as.character(d[[i]]), 
-                                                 Date=as.Date(d[[i]], origin='1970-01-01'), 
-                                                 POSIXct=as.POSIXct(d[[i]], origin='1970-01-01'), 
-                                                 factor=as.factor(d[[i]]),
-                                                 as(d[[i]], colClasses[i]) ))
-  d
+if(overwrite.existing) {
+  if(file.exists(file.path("logs", log.name))) {
+    file.remove(file.path("logs", log.name))
+  }
 }
 
-
-
 # load box score url checker data frame
-load(file="~/hockey_workspaces/boxscore.url.check.data.RData")
+load(file="web-scraping/boxscore.url.check.data.RData")
 
-boxscore.valid <- boxscore.tracker[boxscore.tracker$boxscore.stats,]
+boxscore.valid <- boxscore.tracker[boxscore.tracker$boxscore.stats, c(1:5)]
 boxscore.valid <- boxscore.valid[order(boxscore.valid$team, boxscore.valid$year, boxscore.valid$month, boxscore.valid$day),]
 
-# system runs out of memory after a few teams are imported, so need to subset further
-boxscore.valid <- boxscore.valid[!boxscore.valid$team %in% c("ANA", "ATL", "BOS", "BUF", "CAR", "CGY", "CHI", "COL", "DAL"),]
+if(debug.set) {
+  boxscore.valid <- subset(boxscore.valid,
+                           subset=(team %in% c("ATL", "DET") & year == "2002" & month %in% c(11, 12)))
+  skater.dbtable <- "SKATER_BOXSCORE_TEST"
+  goalie.dbtable <- "GOALIE_BOXSCORE_TEST"
+  
+  if(dbExistsTable(mychannel, skater.dbtable)) {
+    dbRemoveTable(conn=mychannel, name=skater.dbtable)
+    dbRemoveTable(conn=mychannel, name=goalie.dbtable)
+  }
+}
 
+###################################################
+######## CHECK TO SEE IF I STILL NEED TO DO THIS
+# system runs out of memory after a few teams are imported, so need to subset further
+# boxscore.valid <- boxscore.valid[!boxscore.valid$team %in% c("ANA", "ATL", "BOS", "BUF", "CAR", "CGY", "CHI", "COL", "DAL"),]
+####################################################
 rm(boxscore.tracker)
 
 base.url <- "http://www.hockey-reference.com/boxscores/"
 
-player.table.column.names <- c("rk",
+skater.table.column.names <- c("team",
+                               "season",
+                               "year",
+                               "month",
+                               "day",
+                               "rk",
                                "player",
                                "goals",
                                "assists",
                                "points",
-                               "plus.minus",
+                               "plus_minus",
                                "pim",
-                               "goals.even",
-                               "goals.pp",
-                               "goals.sh",
+                               "goals_even",
+                               "goals_pp",
+                               "goals_sh",
                                "shots",
-                               "shooting.percent",
+                               "shooting_percent",
                                "shifts",
-                               "time.on.ice",
-                               "home.away.ind",
-                               "team")
+                               "time_on_ice",
+                               "home_away_ind")
 
-player.table.column.classes <- c("integer",
-                                 "character",
-                                 rep("numeric", 11),
-                                 rep("character", 3))
+skater.table.classes <- list(team="CHAR(100)",
+                             season="CHAR(20)",
+                             year="INT",
+                             month="INT",
+                             day="INT",
+                             rk="INT",
+                             player="CHAR(100)",
+                             goals="INT",
+                             assists="INT",
+                             points="INT",
+                             plus_minus="INT",
+                             pim="INT",
+                             goals_even="INT",
+                             goals_pp="INT",
+                             goals_sh="INT",
+                             shots="INT",
+                             shooting_percent="DOUBLE(6,3)",
+                             shifts="INT",
+                             time_on_ice="CHAR(10)",
+                             home_away_ind="CHAR(2)")
 
-goalie.table.column.names <- c("rk",
+goalie.table.column.names <- c("team",
+                               "season",
+                               "year",
+                               "month",
+                               "day",
+                               "rk",
                                "player",
                                "decision",
                                "ga",
                                "sa",
                                "sv",
-                               "sv.percent",
+                               "sv_percent",
                                "so",
                                "pim",
                                "min",
-                               "ev.ga",
-                               "pp.ga",
-                               "sh.ga",
-                               "en.ga",
-                               "home.away.ind",
-                               "team")
+                               "ev_ga",
+                               "pp_ga",
+                               "sh_ga",
+                               "en_ga",
+                               "home_away_ind")
 
-goalie.table.column.classes <- c("integer",
-                                 "character",
-                                 "character",
-                                 rep("numeric", 11),
-                                 rep("character", 2))
+goalie.table.classes <- list(team="CHAR(100)",
+                             season="CHAR(20)",
+                             year="INT",
+                             month="INT",
+                             day="INT",
+                             rk="INT",
+                             player="CHAR(100)",
+                             decision="CHAR(5)",
+                             ga="INT",
+                             sa="INT",
+                             sv="INT",
+                             sv_percent="DOUBLE(6,3)",
+                             so="INT",
+                             pim="INT",
+                             min="CHAR(10)",
+                             ev_ga="INT",
+                             pp_ga="INT",
+                             sh_ga="INT",
+                             en_ga="INT",
+                             home_away_ind="CHAR(2)")
 
-# nrow(boxscore.valid)
 
 for(i in 1:nrow(boxscore.valid)) {
 
   team <- as.character(boxscore.valid[i, "team"])
   year <- boxscore.valid[i, "year"]
   month <- boxscore.valid[i, "month"]
+  season <- paste(year-1, str_sub(year, start=3, end=4), sep="-")
   
   month.url <- ifelse(str_length(month)==1,
                       paste(0, month, sep=""),
@@ -141,105 +186,107 @@ for(i in 1:nrow(boxscore.valid)) {
   full.url <- paste(base.url, year, month.url, day.url, "0", team,".html", sep="")
   
   out.string <- paste(Sys.time(), "--", team, year, month, day, sep = " ")
-  #print(out.string)
-  cat(out.string, "\n", file="~/hockey_workspaces/box.score.grabber.log.txt", append=TRUE)
+  print(out.string)
+  cat(out.string, "\n", file=file.path("logs", log.name), append=TRUE)
   table.stats <- try(readHTMLTable(full.url, header=FALSE), silent = TRUE)
   
   rm(out.string, full.url, day.url, month.url)
   
   if (!inherits(table.stats, "try-error")) {
     
-    player.table.ind <- unlist(str_detect(names(table.stats), "\\_skaters"))
+    skater.table.ind <- unlist(str_detect(names(table.stats), "\\_skaters"))
     goalie.table.ind <- unlist(str_detect(names(table.stats), "\\_goalies"))
     
-    if (sum(player.table.ind, na.rm=TRUE) < 2 | sum(goalie.table.ind, na.rm=TRUE) < 2) next
+    if (sum(skater.table.ind, na.rm=TRUE) < 2 | sum(goalie.table.ind, na.rm=TRUE) < 2) next
     
-    team.player.table.names <- names(table.stats)[player.table.ind]
+    team.skater.table.names <- names(table.stats)[skater.table.ind]
     team.goalie.table.names <- names(table.stats)[goalie.table.ind]
     
-    player.home.team.ind <- str_detect(team.player.table.names, team)
+    skater.home.team.ind <- str_detect(team.skater.table.names, team)
     goalie.home.team.ind <- str_detect(team.goalie.table.names, team)
     
     
-    home.team.player.table.name <- team.player.table.names[player.home.team.ind]
+    home.team.skater.table.name <- team.skater.table.names[skater.home.team.ind]
     home.team.goalie.table.name <- team.goalie.table.names[goalie.home.team.ind]
-    home.team.clean <- str_replace_all(team.player.table.names[player.home.team.ind], "\\_skaters", "")
+    home.team.clean <- str_replace_all(team.skater.table.names[skater.home.team.ind], "\\_skaters", "")
     
-    away.team.player.table.name <- team.player.table.names[!player.home.team.ind]
+    away.team.skater.table.name <- team.skater.table.names[!skater.home.team.ind]
     away.team.goalie.table.name <- team.goalie.table.names[!goalie.home.team.ind]
-    away.team.clean <- str_replace_all(team.player.table.names[!player.home.team.ind], "\\_skaters", "")
+    away.team.clean <- str_replace_all(team.skater.table.names[!skater.home.team.ind], "\\_skaters", "")
     
-    home.player.table <- as.data.frame(table.stats[home.team.player.table.name])
-    home.player.table$home.away.ind <- "H"
-    home.player.table$team <- home.team.clean
+    home.skater.table <- as.data.frame(table.stats[home.team.skater.table.name])
+    home.skater.table <- cbind(home.team.clean, season, year, month, day, home.skater.table)
+    home.skater.table$home_away_ind <- "H"
+    #home.skater.table$team <- home.team.clean
     
-    away.player.table <- as.data.frame(table.stats[away.team.player.table.name])
-    away.player.table$home.away.ind <- "A"
-    away.player.table$team <- away.team.clean
+    away.skater.table <- as.data.frame(table.stats[away.team.skater.table.name])
+    away.skater.table <- cbind(away.team.clean, season, year, month, day, away.skater.table)
     
-    names(home.player.table) <- player.table.column.names
-    names(away.player.table) <- player.table.column.names
+    away.skater.table$home_away_ind <- "A"
+    #away.skater.table$team <- away.team.clean
+    
+    names(home.skater.table) <- skater.table.column.names
+    names(away.skater.table) <- skater.table.column.names
     
     home.goalie.table <- as.data.frame(table.stats[home.team.goalie.table.name])
-    home.goalie.table$home.away.ind <- "H"
-    home.goalie.table$team <- home.team.clean
+    home.goalie.table <- cbind(home.team.clean, season, year, month, day, home.goalie.table)
+    home.goalie.table$home_away_ind <- "H"
+    #home.goalie.table$team <- home.team.clean
     
     away.goalie.table <- as.data.frame(table.stats[away.team.goalie.table.name])
-    away.goalie.table$home.away.ind <- "A"
-    away.goalie.table$team <- away.team.clean         
+    away.goalie.table <- cbind(away.team.clean, season, year, month, day, away.goalie.table)
+    away.goalie.table$home_away_ind <- "A"
+    #away.goalie.table$team <- away.team.clean         
     
     names(home.goalie.table) <- goalie.table.column.names
     names(away.goalie.table) <- goalie.table.column.names
     
     rm(table.stats)
     
-    player.table <- rbind(home.player.table, away.player.table)
+    skater.table <- rbind(home.skater.table, away.skater.table)
+  
     
-    player.table <- colClasses(player.table, player.table.column.classes)
-    
-    
-    player.table$year <- year
-    player.table$month <- month
-    player.table$day <- day
-    
-    rm(home.player.table, away.player.table)
-    
-    #skater.dbtable <- str_c(team, "_SKATER_BOXSCORE")
-    skater.dbtable <- "SKATER_BOXSCORE"
+    rm(home.skater.table, away.skater.table)
     
     if(dbExistsTable(mychannel, skater.dbtable)) {
-      dbWriteTable(mychannel, skater.dbtable, player.table, append = T, row.names=FALSE)
-    } else dbWriteTable(mychannel, skater.dbtable, player.table, row.names=FALSE) 
+      dbWriteTable(mychannel, 
+                   skater.dbtable, 
+                   skater.table, 
+                   append = TRUE, 
+                   row.names=FALSE,
+                   field.types=skater.table.classes)
+    } else dbWriteTable(mychannel, 
+                        skater.dbtable, 
+                        skater.table, 
+                        row.names=FALSE,
+                        field.types=skater.table.classes) 
     
-    rm(player.table, skater.dbtable)
-    
-    #all.player.table <- rbind(all.player.table, player.table)
+    rm(skater.table)
     
     goalie.table <- rbind(home.goalie.table, away.goalie.table)
     
-    goalie.table <- colClasses(goalie.table, goalie.table.column.classes)
-    
-    goalie.table$year <- year
-    goalie.table$month <- month
-    goalie.table$day <- day
-    
-    rm(home.goalie.table, away.goalie.table)
-    
-    
-    #goalie.dbtable <- str_c(team, "_GOALIE_BOXSCORE")
-    goalie.dbtable <- "GOALIE_BOXSCORE"
+    rm(home.goalie.table, away.goalie.table)    
     
     if(dbExistsTable(mychannel, goalie.dbtable)) {
-      dbWriteTable(mychannel, goalie.dbtable, goalie.table, append = T, row.names=FALSE)
-    } else dbWriteTable(mychannel, goalie.dbtable, goalie.table, row.names=FALSE) 
+      dbWriteTable(mychannel, 
+                   goalie.dbtable, 
+                   goalie.table, 
+                   append = TRUE, 
+                   row.names=FALSE,
+                   field.types=goalie.table.classes)
+    } else dbWriteTable(mychannel, 
+                        goalie.dbtable, 
+                        goalie.table, 
+                        row.names=FALSE,
+                        field.types=goalie.table.classes) 
     
-    rm(goalie.table, goalie.dbtable)
+    rm(goalie.table)
     
     # remove other objects
-    rm(player.home.team.ind, player.table.ind, goalie.home.team.ind, goalie.table.ind, 
-       home.team.goalie.table.name, home.team.player.table.name, away.team.clean, home.team.clean,
-       away.team.goalie.table.name, away.team.player.table.name, team, year, month, day, i,
-       team.goalie.table.names, team.player.table.names)
+    rm(skater.home.team.ind, skater.table.ind, goalie.home.team.ind, goalie.table.ind, 
+       home.team.goalie.table.name, home.team.skater.table.name, away.team.clean, home.team.clean,
+       away.team.goalie.table.name, away.team.skater.table.name, team, year, month, day, i,
+       team.goalie.table.names, team.skater.table.names)
     gc()
     
   } else {
