@@ -13,13 +13,22 @@
 # load required packages
 library(RCurl)
 
+# define indicator for whether to overwrite existing log with new log
+log.name <- "valid.url.log.txt"
+overwrite.existing <- TRUE
+
+if(overwrite.existing) {
+  if(file.exists(file.path("logs", log.name))) {
+    file.remove(file.path("logs", log.name))
+  }
+}
+
+# define utility function for checking if url is valid
 url.checker <- function(url) {
   fn <- try(suppressWarnings(readLines(con <- url(url))), silent=TRUE)
   close(con)
   !inherits(fn, "try-error")
 }
-
-#url.result <- url.checker(full.url)
 
 # define variables used in loops below
 
@@ -54,7 +63,8 @@ for(team in teams) {
   
   out.string <- paste(Sys.time(), "--", team, sep = " ")
   print(out.string)
-  cat(out.string, "\n", file="~/hockey_workspaces/url.log.txt", append=TRUE)
+  
+  cat(out.string, "\n", file=file.path("logs", log.name), append=TRUE)
   
   full.player.url <- paste(base.url, team, "/", "skaters.html", sep="")
   full.goalie.url <- paste(base.url, team, "/", "goalies.html", sep="")
@@ -78,7 +88,7 @@ for(team in teams) {
     
     out.string <- paste(Sys.time(), "--", year, sep = " ")
     print(out.string)
-    cat(out.string, "\n", file="~/hockey_workspaces/url.log.txt", append=TRUE)
+    cat(out.string, "\n", file=file.path("logs", log.name), append=TRUE)
     
     full.roster.url <- paste(base.url, team, "/", year, ".html", sep="")
     full.schedule.url <- paste(base.url, team, "/", year, "_games.html", sep="")
@@ -89,6 +99,19 @@ for(team in teams) {
     
     data.tracker.team.year[data.tracker.team.year$team==team & data.tracker.team.year$year==year, 3:4] <- result.year.vec 
     
+    #-------------------------------------------------------------------------------
+    # Issue: hockey-reference has duplicate urls for Winnipeg franchise
+    # - correct version is team="WIN", incorrect version is team="WPG"
+    # if team=="WPG" and year < 2012, set vector to false
+    #-------------------------------------------------------------------------------
+    
+    if(team=="WPG" & year < 2012) {
+      data.tracker.team.year[data.tracker.team.year$team==team & data.tracker.team.year$year==year, 3] <- FALSE 
+      data.tracker.team.year[data.tracker.team.year$team==team & data.tracker.team.year$year==year, 4] <- FALSE 
+    }
+    
+
+    
     rm(list=ls(pattern="full."))
     rm(result.year.vec)
     
@@ -98,6 +121,6 @@ for(team in teams) {
 # save result into a workspace
 save(data.tracker.team,
      data.tracker.team.year,
-     file="~/hockey_workspaces/url.check.data.RData")
+     file="web-scraping/url.check.data.RData")
 
 
